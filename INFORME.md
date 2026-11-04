@@ -143,7 +143,7 @@ concurrencia del Paso 5.
 
 ![Plan de App Service en modo Consumo (Y1, Windows, South Central US)](images/informe/02-app-service-plan.png)
 
-<!-- ![Overview de la Function App](images/informe/01-function-app-overview.png) -->
+![Overview de la Function App. Se observan el plan `ASP-SCALABILITYLABII-a7fb (Y1: 0)`, el sistema operativo Windows y la function `Fibonacci` ya registrada con desencadenador HTTP](images/informe/01-function-app-overview.png)
 <!-- ![Recursos creados en el grupo SCALABILITY_LAB_II](images/informe/03-resource-group.png) -->
 
 **Explicación:**
@@ -250,8 +250,7 @@ necesidad de una *function key*.
 ![Selección de la Function App destino durante el despliegue](images/informe/06-vscode-deploy.png)
 
 ![Notificación de despliegue completado](images/informe/07-vscode-deploy-done.png)
-<!-- ![La function Fibonacci listada en el portal](images/informe/08-function-in-portal.png) -->
-<!-- ![Código en modo solo lectura tras el despliegue externo](images/informe/09-portal-read-only.png) -->
+![Editor *Código y prueba* del portal. El aviso superior confirma el modo de solo lectura: "Actualmente, la aplicación está en modo de solo lectura porque la ejecución se realiza desde un archivo de paquete. Para realizar cambios, actualice el contenido del archivo ZIP y la configuración de la aplicación WEBSITE_RUN_FROM_PACKAGE". Debajo se observa el `index.js` publicado](images/informe/09-portal-read-only.png)
 
 ---
 
@@ -301,28 +300,44 @@ Dos decisiones del código merecen comentario:
   una sola petición satura un núcleo durante segundos, que es exactamente la condición que
   hace interesante el escenario de escalabilidad.
 
-**Capturas:**
-
-<!-- ![Código de la function en el portal](images/informe/10-function-code.png) -->
+El código tal como quedó publicado en Azure puede verse en la captura del editor del
+portal incluida en el Paso 2.
 
 ---
 
 ## Paso 4. Prueba de la Function desde el portal de Azure
 
+La prueba se realizó con la herramienta **Probar/ejecutar** del editor del portal, que
+permite componer una petición HTTP contra la function sin salir del navegador.
+
 **Petición enviada:**
 
-```json
-{ "nth": 10 }
-```
+| Campo | Valor |
+|---|---|
+| Método HTTP | `POST` |
+| Clave | `_master`, la clave de host que el panel propone por defecto |
+| Cuerpo | `{ "nth": 10 }` |
 
-**Capturas:**
-
-<!-- ![Test/Run en el portal](images/informe/11-test-portal.png) -->
-<!-- ![Respuesta de la function](images/informe/12-test-response.png) -->
+El método debe cambiarse explícitamente a `POST`. El panel propone `GET`, pero la function
+lee el parámetro desde `req.body.nth` y en una petición GET no existe cuerpo, de modo que
+el acceso a esa propiedad falla y el host responde con un error 500.
 
 **Resultado:**
 
-_(pendiente)_
+| Campo | Valor |
+|---|---|
+| Código de respuesta HTTP | `200 De acuerdo` |
+| Contenido de respuesta | `55` |
+
+El valor es correcto: el décimo término de la secuencia de Fibonacci es 55. Con esto la
+function queda verificada de extremo a extremo, desde el disparador HTTP hasta la
+respuesta, que es la condición necesaria para pasar a las pruebas de carga del Paso 5.
+
+**Capturas:**
+
+![Pestaña *Entrada* del panel de prueba, con el método `POST` y el cuerpo de la petición](images/informe/11-test-portal.png)
+
+![Pestaña *Salida* con el código `200 De acuerdo` y el contenido `55`](images/informe/12-test-response.png)
 
 ---
 
