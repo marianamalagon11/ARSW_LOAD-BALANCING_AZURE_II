@@ -1,0 +1,54 @@
+{
+  "info": {
+    "name": "Fibonacci - Azure Functions",
+    "description": "Consulta el enésimo término de la secuencia de Fibonacci sobre la Azure Function desplegada. Pensada para ejecutarse de forma concurrente con Newman.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://functionprojectfibonaccim-cqaqd4aravgwaeht.southcentralus-01.azurewebsites.net"
+    },
+    {
+      "key": "nth",
+      "value": "1000000"
+    }
+  ],
+  "item": [
+    {
+      "name": "Fibonacci nth",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('La peticion fue respondida con 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('La respuesta contiene un numero', function () {",
+              "    pm.expect(pm.response.text()).to.match(/^[0-9]+$/);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"nth\": {{nth}}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/Fibonacci",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "Fibonacci"]
+        }
+      }
+    }
+  ]
+}
