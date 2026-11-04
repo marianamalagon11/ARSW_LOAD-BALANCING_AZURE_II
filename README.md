@@ -8,6 +8,8 @@
 * Mariana Malagón
 
 > El desarrollo, capturas, análisis y respuestas de este laboratorio se encuentran en [INFORME.md](INFORME.md).
+>
+> Sustentación en video: https://youtu.be/NOVY7lKHwrg
 
 ### Dependencias
 * Cree una cuenta gratuita dentro de Azure. Para hacerlo puede guiarse de esta [documentación](https://azure.microsoft.com/es-es/free/students/). Al hacerlo usted contará con $100 USD para gastar durante 12 meses.
