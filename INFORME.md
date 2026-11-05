@@ -99,11 +99,16 @@ minutos después, las peticiones concurrentes ya se encolaron o fallaron. Se alc
 "todas las peticiones son respondidas" o "CPU no superior al 70%", pero difícilmente ambas
 a la vez.
 
-El plan de Consumo rompe esa dependencia porque no escala mirando la CPU sino la cola de
-peticiones: detecta diez peticiones concurrentes y crea instancias para atenderlas antes de
-que la CPU de ninguna llegue al límite. La medida de respuesta del escenario se cumple por
-**distribución** y no por contención: cada instancia ejecuta un cálculo y el consumo se
-reparte en lugar de acumularse en un solo host.
+Sobre el papel, el plan de Consumo rompe esa dependencia porque no escala mirando la CPU
+sino la cola de peticiones. De ahí se desprende la **hipótesis de partida** de este
+laboratorio: que el *scale controller* detecte las diez peticiones concurrentes y cree
+instancias para atenderlas antes de que la CPU de ninguna llegue al límite, de modo que la
+medida de respuesta se cumpla por **distribución** y no por contención, con cada instancia
+ejecutando un cálculo y el consumo repartido en lugar de acumulado en un solo host.
+
+Conviene enunciarla como hipótesis y no como conclusión, porque el Paso 5 la somete a
+prueba con una ráfaga de diez peticiones simultáneas y los tiempos medidos no la
+confirman.
 
 Esa estrategia tiene un precio, que se contrasta con los resultados del Paso 5:
 
@@ -265,6 +270,7 @@ necesidad de una *function key*.
 ![Selección de la Function App destino durante el despliegue](images/informe/06-vscode-deploy.png)
 
 ![Notificación de despliegue completado](images/informe/07-vscode-deploy-done.png)
+
 ![Editor *Código y prueba* del portal. El aviso superior confirma el modo de solo lectura: "Actualmente, la aplicación está en modo de solo lectura porque la ejecución se realiza desde un archivo de paquete. Para realizar cambios, actualice el contenido del archivo ZIP y la configuración de la aplicación WEBSITE_RUN_FROM_PACKAGE". Debajo se observa el `index.js` publicado](images/informe/09-portal-read-only.png)
 
 ---
@@ -421,10 +427,10 @@ que aparece en el video dio 13,1 s, del mismo orden.
 **Análisis**
 
 La prueba se ejecutó dos veces en momentos distintos y arrojó valores equivalentes. La
-segunda corrida, que es la que aparece en el video, dio un promedio de 125.852 ms, un mínimo de 125.683 ms, un máximo de
-125.971 ms y una duración total de 126.664 ms, con las diez respuestas devolviendo los
-mismos 208.988 dígitos. La reproducibilidad descarta que lo observado sea una anomalía
-puntual de la plataforma.
+segunda corrida, que es la que aparece en el video, dio un promedio de 125.852 ms, un
+mínimo de 125.683 ms, un máximo de 125.971 ms y una duración total de 126.664 ms, con las
+diez respuestas devolviendo los mismos 208.988 dígitos. La reproducibilidad descarta que
+lo observado sea una anomalía puntual de la plataforma.
 
 El resultado más revelador no es que todas las peticiones hayan respondido, sino **cuánto
 tardaron en hacerlo**. Una petición aislada con el mismo valor de `n` tarda 13,8 segundos;
@@ -454,6 +460,12 @@ Una ráfaga en la que las diez peticiones llegan en el mismo instante puede enco
 aplicación con pocas instancias activas, y como cada petición ocupa la CPU de inmediato y
 no la libera, el escalamiento no alcanza a materializarse antes de que el lote termine. El
 escalamiento automático es real, pero no es instantáneo.
+
+Este resultado **refuta la hipótesis planteada en la Parte 0**. El escenario no se
+satisfizo por distribución sino por contención: la ventaja del escalamiento dirigido por
+eventos es cierta como mecanismo, pero necesita más tiempo del que dura una ráfaga de dos
+minutos para traducirse en instancias nuevas. La predicción erró en el plazo, no en el
+principio.
 
 **Métricas registradas por Azure**
 
@@ -580,10 +592,11 @@ La consecuencia es contundente: el enfoque recursivo **no alcanza el caso que pl
 escenario de calidad**, ni siquiera de lejos. El escenario habla de valores superiores a
 1.000.000 y en esta prueba la recursión se rompió con un valor veinte veces menor. Calentar
 la cache por tramos evita el desbordamiento de pila (verificado en local hasta
-`n = 50.000`), pero no resuelve el problema: guardar un millón de términos exigiría, según
-una estimación teórica, unos 43 GB de memoria, frente al máximo de 1,5 GB por instancia del
-plan de Consumo. La versión iterativa del Paso 3, en cambio, resuelve ese mismo valor sin dificultad, porque reutiliza
-un único marco de pila.
+`n = 50.000`), pero no resuelve el problema de fondo: la cache completa no cabe en una
+instancia. Como `F(k)` ocupa cerca de `0,694 * k` bits, almacenar el millón de términos
+exigiría más de **40 GB** solo en representación binaria, frente al máximo de 1,5 GB por
+instancia del plan de Consumo. La versión iterativa del Paso 3, en cambio, resuelve ese
+mismo valor sin dificultad, porque reutiliza un único marco de pila.
 
 **Capturas:**
 
@@ -838,12 +851,12 @@ dada.
 
 **2. El escalamiento automático es real, pero no es instantáneo.** El experimento más
 revelador del laboratorio fue descubrir que las diez peticiones no se repartieron en diez
-instancias. Terminaron todas juntas, con menos del 1% de diferencia entre la más rápida y
-la más lenta, lo que indica que compartieron la misma capacidad de cómputo en lugar de
-aprovechar el paralelismo. El *scale controller* evalúa la carga de forma periódica y la ráfaga fue más
-rápida que su reacción. La lección es que serverless protege la **disponibilidad** frente
-a picos repentinos, no la **latencia**: ninguna petición se perdió, pero todas tardaron
-nueve veces más.
+instancias, en contra de lo previsto en la Parte 0. Terminaron todas juntas, con menos del
+1% de diferencia entre la más rápida y la más lenta, lo que indica que compartieron la
+misma capacidad de cómputo en lugar de aprovechar el paralelismo. El *scale controller*
+evalúa la carga de forma periódica y la ráfaga fue más rápida que su reacción. La lección
+es que serverless protege la **disponibilidad** frente a picos repentinos, no la
+**latencia**: ninguna petición se perdió, pero todas tardaron nueve veces más.
 
 **3. La facturación castiga la contención.** Como se factura tiempo de reloj y no tiempo
 de CPU útil, las mismas diez respuestas costaron aproximadamente nueve veces más de lo que
@@ -853,7 +866,7 @@ anterior, porque convierte la lentitud del escalamiento en un problema económic
 uno de experiencia de usuario.
 
 **4. El estado en memoria es una optimización oportunista, nunca una garantía.** La
-memoization redujo el tiempo de cómputo de 0,591 ms a 0,002 ms, una mejora de tres órdenes
+memoization redujo el tiempo de cómputo de 3,687 ms a 0,003 ms, una mejora de tres órdenes
 de magnitud, y sobrevivió a casi media hora de vida del proceso, bastante más de lo que el
 enunciado supone. Pero sobrevivió por suerte, no por diseño: bastó un redespliegue para
 borrarla por completo. Nada en el contrato de la plataforma promete que el proceso siga
