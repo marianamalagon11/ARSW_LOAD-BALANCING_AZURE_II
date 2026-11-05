@@ -7,9 +7,23 @@
 - Paula Lozano
 - Mariana Malagón
 
-**Fecha:** 2026-10-30
+**Fecha:** 2026-11-03
 
 **Sustentación en video:** https://youtu.be/NOVY7lKHwrg
+
+La Function App no se mantiene activa, para evitar consumo de créditos de la suscripción,
+por lo que el host que aparece en este informe ya no responde. El video queda como evidencia
+de su funcionamiento. Para repetir las pruebas basta con desplegar de nuevo el proyecto y
+actualizar `baseUrl` en la colección de `load-test/`.
+
+| Evidencia en el video | Minuto |
+|---|---|
+| Prueba de `Fibonacci` con `nth = 10`, respuesta 55 | 0:49 |
+| Línea base: una petición con `n = 1.000.000` | 1:51 |
+| Lote de 10 peticiones concurrentes y análisis de tiempos | 2:44 |
+| Métricas de la Function App en Azure | 5:49 |
+| Memoization: llamadas repetidas con el mismo valor | 6:26 |
+| Explicación de la permanencia de la cache: inactividad, reinicio y redespliegue | 7:05 |
 
 ---
 
@@ -279,7 +293,9 @@ al código como `req`. El de salida devuelve la respuesta a través de `context.
 **`FunctionProject/Fibonacci/index.js`**
 
 El algoritmo es **iterativo**: recorre la secuencia una sola vez acumulando los dos
-términos anteriores, con complejidad `O(n)` en tiempo y `O(1)` en memoria.
+términos anteriores, con `O(n)` sumas y sin conservar los términos ya superados. Como cada
+suma cuesta más a medida que crecen los números, el costo total es el `O(n²)` descrito en
+la Parte 0.
 
 ```js
 for (var i = 0; i < nth - 1; i++) {
@@ -376,12 +392,13 @@ valores de `n`, lo que permite separar el efecto del algoritmo del efecto de la 
 | 200.000 | 1,28 s | 41.798 |
 | 500.000 | 4,14 s | 104.494 |
 | 1.000.000 | 13,78 s | 208.988 |
-| 2.000.000 | 90,70 s | 417.976 |
+| 2.000.000 | 90,70 s | 417.975 |
 
 El crecimiento es claramente superlineal, consistente con el costo cuadrático anticipado
 en la Parte 0: duplicar `n` de 500.000 a 1.000.000 multiplica el tiempo por 3,3. Además,
 la cantidad de dígitos observada en la respuesta para `n = 1.000.000`, **208.988**,
-coincide con la estimación planteada en el análisis previo.
+coincide con la estimación planteada en el análisis previo. La medición de la misma petición
+que aparece en el video dio 13,1 s, del mismo orden.
 
 **Resultados de las 10 peticiones concurrentes**
 
@@ -404,7 +421,7 @@ coincide con la estimación planteada en el análisis previo.
 **Análisis**
 
 La prueba se ejecutó dos veces en momentos distintos y arrojó valores equivalentes. La
-segunda corrida dio un promedio de 125.852 ms, un mínimo de 125.683 ms, un máximo de
+segunda corrida, que es la que aparece en el video, dio un promedio de 125.852 ms, un mínimo de 125.683 ms, un máximo de
 125.971 ms y una duración total de 126.664 ms, con las diez respuestas devolviendo los
 mismos 208.988 dígitos. La reproducibilidad descarta que lo observado sea una anomalía
 puntual de la plataforma.
@@ -417,21 +434,26 @@ Tres observaciones sobre la forma de los datos:
 
 1. **La dispersión es mínima.** Entre la petición más rápida y la más lenta hay 654 ms,
    menos del 1 por ciento. Las diez terminaron prácticamente juntas.
-2. **Eso descarta el encolamiento por turnos.** Si las peticiones se hubieran atendido una
-   después de otra, los tiempos habrían sido escalonados: 14 s, 28 s, 42 s, y así
-   sucesivamente. Terminar todas a la vez es la firma de un **reparto de CPU**: las diez
-   se ejecutaron simultáneamente compitiendo por los mismos núcleos.
+2. **Las respuestas no llegaron escalonadas.** Si cada respuesta se hubiera entregado apenas
+   terminara su cálculo en una cola estricta, los tiempos habrían sido 14 s, 28 s, 42 s, y
+   así sucesivamente. En cambio llegaron juntas, señal de que las diez peticiones
+   **compartieron la misma capacidad de cómputo**. Esto precisa lo dicho en la sustentación,
+   donde se describió como ejecución simultánea: como el worker de Node es de un solo hilo
+   (Parte 0), los tiempos no permiten afirmar que los cálculos avanzaran a la vez. También
+   es posible que se resolvieran uno tras otro y que las respuestas salieran juntas al
+   liberarse el event loop. Distinguir ambos casos exigiría marcas de tiempo por invocación.
 3. **El tiempo total equivale al trabajo serializado.** Diez peticiones por 13,8 s dan
    138 s de cómputo, y el lote completo tardó 126,8 s. El sistema hizo el trabajo de las
    diez en el tiempo que le habría tomado hacerlas una tras otra, sin ganancia alguna por
    paralelismo.
 
-La conclusión es que **Azure no escaló a diez instancias durante la ráfaga**. El *scale
-controller* del plan de Consumo evalúa la carga de forma periódica y agrega instancias de
-manera gradual. Una ráfaga en la que las diez peticiones llegan en el mismo instante
-encuentra la aplicación con una sola instancia activa, y como cada petición ocupa la CPU
-de inmediato y no la libera, el escalamiento no alcanza a materializarse antes de que el
-lote termine. El escalamiento automático es real, pero no es instantáneo.
+La conclusión, inferida de estos tiempos porque no se registró el recuento de instancias,
+es que **Azure no escaló a diez instancias durante la ráfaga**. El *scale controller* del
+plan de Consumo evalúa la carga de forma periódica y agrega instancias de manera gradual.
+Una ráfaga en la que las diez peticiones llegan en el mismo instante puede encontrar la
+aplicación con pocas instancias activas, y como cada petición ocupa la CPU de inmediato y
+no la libera, el escalamiento no alcanza a materializarse antes de que el lote termine. El
+escalamiento automático es real, pero no es instantáneo.
 
 **Métricas registradas por Azure**
 
@@ -444,7 +466,8 @@ lote termine. El escalamiento automático es real, pero no es instantáneo.
 
 La última fila merece atención: la cola del front end HTTP permaneció vacía durante toda
 la prueba. La demora no se produjo esperando turno para entrar a la aplicación, sino
-dentro de ella, disputando CPU. Esto refuerza el diagnóstico del punto 2.
+dentro de ella, a la espera de CPU disponible. Esto es coherente con lo descrito en el
+punto 2.
 
 Las unidades de ejecución permiten además verificar el modelo de facturación: diez
 peticiones por 126 s por 128 MB de memoria asignada dan aproximadamente 161 millones de
@@ -459,14 +482,14 @@ Se cumple parcialmente, y la distinción es importante:
 
 | Elemento del escenario | Resultado |
 |---|---|
-| Todas las peticiones son respondidas | **Se cumple.** 10 de 10 con HTTP 200 y el resultado correcto |
+| Todas las peticiones son respondidas | **Se cumple.** 10 de 10 con HTTP 200 y 208.988 dígitos, la cantidad esperada para `F(1.000.000)` |
 | CPU del sistema no superior al 70% | **No comprobable de forma directa y, por evidencia indirecta, no se cumple** |
 
 La medida de respuesta del escenario resulta ser **inobservable en el plan de Consumo**:
 Azure no expone un porcentaje de CPU para este plan, porque no existe un host fijo
 asignado a la aplicación que se pueda medir. Lo que expone son unidades de ejecución. La
-evidencia indirecta, un tiempo de respuesta multiplicado por nueve, indica que los núcleos
-disponibles estuvieron saturados durante los dos minutos que duró la prueba.
+evidencia indirecta, un tiempo de respuesta multiplicado por nueve, indica que la CPU
+disponible estuvo saturada durante los dos minutos que duró la prueba.
 
 Hay además un riesgo que la prueba deja a la vista: los 126,8 segundos están a mitad de
 camino del **límite de 230 segundos** del balanceador descrito en la Parte 0. Duplicar la
@@ -474,10 +497,10 @@ concurrencia, o mantenerla y usar `n = 2.000.000`, llevaría las peticiones por 
 ese umbral y Azure las cortaría. El escenario, tal como está enunciado, es alcanzable en
 disponibilidad pero frágil en latencia.
 
-En síntesis, el modelo serverless garantizó que **ninguna petición se perdiera**, que es
-un resultado valioso y difícil de conseguir con un Scale Set reaccionando por umbral de
-CPU. Lo que no garantizó fue el tiempo de respuesta, porque el escalamiento horizontal
-necesita tiempo para materializarse y la ráfaga fue más rápida que él.
+En síntesis, en esta prueba **ninguna petición se perdió**, un resultado valioso y difícil
+de conseguir con un Scale Set reaccionando por umbral de CPU. Lo que el modelo no garantizó
+fue el tiempo de respuesta, porque el escalamiento horizontal necesita tiempo para
+materializarse y la ráfaga fue más rápida que él.
 
 ---
 
@@ -534,9 +557,8 @@ una cache perdida por haber caído en otra instancia.
 
 La segunda llamada resultó **1.229 veces más rápida** que la primera, sobre la misma
 instancia y con el mismo valor. La memoization funciona exactamente como se espera
-mientras el proceso siga vivo. El registro del host lo confirma de forma independiente:
-dos invocaciones consecutivas aparecen con el mismo `workerId` y su duración total baja de
-11 ms a 5 ms.
+mientras el proceso siga vivo. El registro del host muestra además cada ejecución de
+`FibonacciMemo` con su `workerId` y su duración, lo que permite seguir qué worker la atendió.
 
 **Límite propio del enfoque recursivo**
 
@@ -556,8 +578,11 @@ cerca de 49.000 llamadas anidadas. Node agota la pila antes de llegar al caso ba
 
 La consecuencia es contundente: el enfoque recursivo **no alcanza el caso que plantea el
 escenario de calidad**, ni siquiera de lejos. El escenario habla de valores superiores a
-1.000.000 y la recursión se rompe veinte veces antes, con o sin memoization. La versión
-iterativa del Paso 3, en cambio, resuelve ese mismo valor sin dificultad, porque reutiliza
+1.000.000 y en esta prueba la recursión se rompió con un valor veinte veces menor. Calentar
+la cache por tramos evita el desbordamiento de pila (verificado en local hasta
+`n = 50.000`), pero no resuelve el problema: guardar un millón de términos exigiría, según
+una estimación teórica, unos 43 GB de memoria, frente al máximo de 1,5 GB por instancia del
+plan de Consumo. La versión iterativa del Paso 3, en cambio, resuelve ese mismo valor sin dificultad, porque reutiliza
 un único marco de pila.
 
 **Capturas:**
@@ -566,7 +591,7 @@ un único marco de pila.
 
 ![Las mismas llamadas tras 6,7 minutos de inactividad. La cache sobrevivió: `cacheHit` es verdadero desde la primera petición y `procesoActivoSegundos` acumula 1.624](images/informe/17-memo-after-idle.png)
 
-![Registros del host: dos invocaciones consecutivas sobre el mismo `workerId`, con la duración cayendo de 11 ms a 5 ms](images/informe/18-memo-logs.png)
+![Registros del host: invocación de `FibonacciMemo` con su `workerId` y una duración de 11 ms](images/informe/18-memo-logs.png)
 
 **Comportamiento observado tras la inactividad**
 
@@ -661,10 +686,10 @@ Tres rasgos lo definen:
 3. **Instancias efímeras y sin estado.** Las instancias se crean y se destruyen de forma
    transparente, y no se debe asumir que una conserva información entre invocaciones.
 
-Los dos últimos rasgos dejaron de ser teoría en este laboratorio. El tercero es
-exactamente la causa del comportamiento observado en el Paso 6: la cache en memoria se
-pierde cuando la instancia se recicla. Y el primero mostró su matiz en el Paso 5: el
-escalamiento es automático, pero no es instantáneo.
+Dos de estos rasgos dejaron de ser teoría en este laboratorio. El tercero explica lo
+observado en el Paso 6: la cache en memoria se perdió cuando el proceso se reinició al
+redesplegar. Y el primero mostró su matiz en el Paso 5: el escalamiento es automático, pero
+no es instantáneo.
 
 ### 3. ¿Qué es el runtime y qué implica seleccionarlo al momento de crear el Function App?
 
@@ -698,7 +723,7 @@ que necesita persistir. No es un accesorio opcional sino una dependencia estruct
 
 | Uso | Servicio de almacenamiento |
 |---|---|
-| Contenido de la aplicación, es decir el paquete desplegado | Blobs |
+| Contenido de la aplicación, es decir el paquete desplegado | Azure Files (plan de Consumo en Windows) |
 | Claves de acceso de las functions y del host | Blobs |
 | *Leases* de coordinación entre instancias, que evitan que dos procesen el mismo evento | Blobs |
 | Colas y tablas internas de los disparadores que no son HTTP | Colas y Tablas |
@@ -720,7 +745,7 @@ qué garantías de latencia y aislamiento se obtienen.
 |---|---|---|---|---|
 | **Consumo** (`Y1`, el usado aquí) | Automático, de cero a 200 instancias | Ejecuciones y GB-s consumidos | Costo cero en reposo, cero administración, bolsa gratuita mensual amplia | Arranque en frío, límite de 230 s en HTTP, sin red virtual, sin instancias precalentadas |
 | **Flex Consumption** | Automático, hasta 1.000 instancias | Ejecuciones y GB-s, con instancias siempre listas facturadas aparte | Opción de instancias *always ready* que mitigan el arranque en frío, soporte de red virtual, mayor techo de escalamiento | Solo Linux, bolsa gratuita menor, no admite edición en el portal |
-| **Premium** (Elastic Premium) | Automático sobre trabajadores precalentados, hasta 100 instancias | Capacidad reservada por hora, se pague o no se use | Sin arranque en frío, sin límite de duración, red virtual, más CPU y memoria por instancia | Costo base permanente aunque no haya tráfico |
+| **Premium** (Elastic Premium) | Automático sobre trabajadores precalentados, hasta 100 instancias | Capacidad reservada por hora, se pague o no se use | Sin arranque en frío, sin límite de duración de ejecución (la respuesta HTTP sigue sujeta a los 230 s del balanceador), red virtual, más CPU y memoria por instancia | Costo base permanente aunque no haya tráfico |
 | **Dedicado** (App Service Plan) | Manual o por reglas de autoescalado | La máquina virtual, por hora | Costo predecible, aprovecha planes ya existentes, admite ejecución continua | Sin escalamiento dirigido por eventos, se paga el tiempo ocioso, el dimensionamiento es responsabilidad del equipo |
 | **Container Apps** | Automático, orientado a contenedores | Recursos del entorno de Container Apps | Útil cuando la function convive con microservicios en contenedores | Mayor complejidad operativa, no admite edición en el portal |
 
@@ -740,10 +765,10 @@ independientes, y basta una para romperla.
 1. **La cache pertenece al proceso, no a la Function App.** El `Map` reside en la memoria
    del proceso de Node que atiende la petición. No es un recurso de la aplicación ni está
    replicado.
-2. **Las instancias son efímeras.** Tras un período de inactividad la plataforma recicla
-   el proceso para liberar recursos, y con él desaparece la cache. Es el experimento del
-   Paso 6: tras cinco minutos sin tráfico, el mismo valor que respondía desde la cache
-   vuelve a calcularse desde cero.
+2. **Las instancias son efímeras.** La plataforma puede reciclar el proceso sin aviso, y
+   con él desaparece la cache. En el experimento del Paso 6 la cache sobrevivió a más de
+   seis minutos sin tráfico y a un reinicio de la aplicación, pero se perdió por completo
+   al publicar un paquete nuevo.
 3. **El escalamiento horizontal multiplica las caches.** Cuando la carga crece, Azure crea
    instancias nuevas, cada una con su propia cache vacía. Cuantas más instancias haya, más
    baja es la proporción de aciertos, de modo que la optimización se degrada justo cuando
@@ -756,8 +781,9 @@ A estas cuatro razones, propias del modelo de hospedaje, se suma una limitación
 enfoque recursivo en sí mismo que se verificó en este laboratorio: cada término no
 memoizado consume un marco de pila, de modo que con la cache fría la recursión agota la
 pila de Node. La function responde `Maximum call stack size exceeded` para `n = 50.000`,
-un valor veinte veces menor que el del escenario de calidad. El enfoque recursivo, con o
-sin memoization, **no puede siquiera alcanzar el caso que el escenario plantea**.
+un valor veinte veces menor que el del escenario de calidad. El enfoque recursivo **no
+alcanza el caso que el escenario plantea**: aun evitando el límite de la pila, la memoria
+que ocuparía la cache lo impediría.
 
 La conclusión no es que la memoization sea inútil, sino que en serverless solo es válida
 como optimización oportunista: acelera repeticiones dentro de una misma ráfaga sobre una
@@ -804,7 +830,7 @@ puede medir.** Las diez peticiones concurrentes fueron respondidas sin pérdidas
 que la primera condición se satisface. La segunda, mantener la CPU por debajo del 70%,
 resultó inobservable: el plan de Consumo no expone esa métrica porque no hay un host fijo
 asignado a la aplicación. La evidencia indirecta, un tiempo de respuesta multiplicado por
-nueve, indica que los núcleos estuvieron saturados. Un escenario de calidad formulado en
+nueve, indica que la CPU disponible estuvo saturada. Un escenario de calidad formulado en
 términos de utilización de CPU es poco útil para una arquitectura serverless; para que
 fuera verificable habría que reformularlo en términos observables, por ejemplo exigiendo
 que el percentil 95 del tiempo de respuesta no supere cierto umbral bajo una concurrencia
@@ -813,8 +839,8 @@ dada.
 **2. El escalamiento automático es real, pero no es instantáneo.** El experimento más
 revelador del laboratorio fue descubrir que las diez peticiones no se repartieron en diez
 instancias. Terminaron todas juntas, con menos del 1% de diferencia entre la más rápida y
-la más lenta, lo que demuestra que compitieron por la misma CPU en lugar de ejecutarse en
-paralelo. El *scale controller* evalúa la carga de forma periódica y la ráfaga fue más
+la más lenta, lo que indica que compartieron la misma capacidad de cómputo en lugar de
+aprovechar el paralelismo. El *scale controller* evalúa la carga de forma periódica y la ráfaga fue más
 rápida que su reacción. La lección es que serverless protege la **disponibilidad** frente
 a picos repentinos, no la **latencia**: ninguna petición se perdió, pero todas tardaron
 nueve veces más.
